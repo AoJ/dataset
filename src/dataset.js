@@ -242,7 +242,6 @@ Version 0.0.1.2
       //Update existing values, used the pass column to match 
       //incoming data to existing rows.
       againstColumn : function(data) {
-        
         var rows = [],
             colNames = _.keys(data),   
             row,
@@ -265,7 +264,8 @@ Version 0.0.1.2
           } else {
             toUpdate.push( row );
             var oldRow = this.rowById(this.column('_id').data[rowIndex])._id;
-            this.update(oldRow, row);
+            row._id = oldRow;
+            this.update(row);
           }
         }, this);
         if (toAdd.length > 0) {
@@ -532,113 +532,184 @@ Version 0.0.1.2
       }
     },
 
-    /**
-    * Update all rows that match the filter. Fires update and change.
-    * Parameters:
-    *   filter - row id OR filter rows to be updated
-    *   newProperties - values to be updated.
-    *   options - options. Optional
-    *     silent - set to true to prevent event triggering..
-    */    
-    update : function(filter, newProperties, options) {
+    _arrayUpdate : function(rows) {
+      var deltas = [];
+      _.each(rows, function(newRow) {
+        var delta = { _id : newRow._id, old : {}, changed : {} };
+        var pos = this._rowPositionById[newRow._id];
+        _.each(newRow, function(value, prop) {
+          var column = this._columns[this._columnPositionByName[prop]];
+          var type = Miso.types[column.type];
 
-      var newKeys, deltas = [];
+          if (typeof column === "undefined") { 
+            throw "column " + prop + " not found!" 
+          }
 
-      var updateRow = _.bind(function(row, rowIndex) {
-        var c, props;
-
-        if (_.isFunction(newProperties)) {
-          props = newProperties.apply(this, [row]);
-        } else {
-          props = newProperties;
-        }
-
-        newKeys = _.keys(props);
-
-        _.each(newKeys, function(columnName) {
-
-          c = this.column(columnName);
-
-          // check if we're trying to update a computed column. If so
-          // fail.
-          if (c.isComputed()) {
+          //Ensure value passes the type test
+          if (!type.test(value, column)) {
             throw "You're trying to update a computed column. Those get computed!";
           }
 
-          // test if the value passes the type test
-          var Type = Miso.types[c.type];
-          
-          if (Type) {
-            if (Type.test(props[c.name], c)) {
+          value = type.coerce(value, column);
 
-              // do we have a before filter on the column? If so, apply it
-              if (!_.isUndefined(c.before)) {
-                props[c.name] = c.before(props[c.name]);
+          //Run any before filters on the column
+          if (!_.isUndefined(column.before)) {
+            value = column.before(value);
+          }
+ 
+          if (column.data[pos] !== value) {
+            delta.old[prop] = column.data[pos];
+            column.data[pos] = value;
+            delta.changed[prop] = value;
+          }
+
+          // Update any computed columns
+          if (typeof this._computedColumns !== "undefined") {
+            _.each(this._computedColumns, function(column) {
+              var temprow = _.extend({}, this._row(pos), newRow),
+                  oldValue = temprow[column.name],
+                  newValue = column.compute(temprow, pos);
+              if (oldValue !== newValue) {
+                delta.old[column.name] = oldValue;
+                delta.changed[column.name] = newValue;
               }
-
-              // coerce it.
-              props[c.name] = Type.coerce(props[c.name], c);
-            } else {
-              throw("incorrect value '" + props[c.name] + 
-                    "' of type " + Miso.typeOf(props[c.name], c) +
-                    " passed to column '" + c.name + "' with type " + c.type);  
-            }
+            }, this);
           }
-          c.data[rowIndex] = props[c.name];
+
         }, this);
-        
-        // do we have any computed columns? if so we need to update
-        // the row.
-        if (typeof this._computedColumns !== "undefined") {
-          _.each(this._computedColumns, function(column) {
-
-            // compute the complete row:
-            var newrow = _.extend({}, row, props);
-            
-            var oldValue = newrow[column.name];
-            var newValue = column.compute(newrow, rowIndex);
-            // if this is actually a new value, then add it to the delta.
-            if (oldValue !== newValue) {
-              props[column.name] = newValue;
-            }
-          });
-        }
-
-        deltas.push( { _id : row._id, old : row, changed : props } );
+        deltas.push(delta);
       }, this);
+      return deltas;
+    },
 
-      // do we just have a single id? array it up.
-      if (_.isString(filter)) {
-        filter = [filter];
-      }
-      // do we have an array of ids instead of filter functions?
-      if (_.isArray(filter)) {
-        var row, rowIndex;
-        _.each(filter, function(rowId) {
-          row = this.rowById(rowId);
-          rowIndex = this._rowPositionById[rowId];
-          
-          updateRow(row, rowIndex);
-        });
+    _functionUpdate : function(func) {
+      var deltas = [];
+      return deltas;
+    },
 
+    /**
+    * Update can be used on one of three ways.
+    * 1: To update specific rows by passing in an object with the _id
+    * 2: To update a number of rows by passing in an array of objects with _ids
+    * 3: To update a number of row by passing in a function which will be applied to
+    * all rows.
+    * */    
+    update : function( rowsOrFunction, options ) {
+      var deltas;
+
+      if ( _.isFunction(rowsOrFunction) ) {
+        deltas = this._functionUpdate(rowsOrFunction);
       } else {
-
-        // make a filter function.
-        filter = this._rowFilter(filter);
-
-        this.each(function(row, rowIndex) {
-          if (filter(row)) {
-            updateRow(row, rowIndex);
-          }
-        }, this);
+        var rows = _.isArray(rowsOrFunction) ? rowsOrFunction : [rowsOrFunction];
+        deltas = this._arrayUpdate(rows);
       }
 
+      //computer column updates
+      //update triggers
       if (this.syncable && (!options || !options.silent)) {
         var ev = this._buildEvent( deltas );
         this.trigger('update', ev );
         this.trigger('change', ev );
       }
       return this;
+
+      // var newKeys, deltas = [];
+
+      // var updateRow = _.bind(function(row, rowIndex) {
+        // var c, props;
+
+        // if (_.isFunction(newProperties)) {
+          // props = newProperties.apply(this, [row]);
+        // } else {
+          // props = newProperties;
+        // }
+
+        // newKeys = _.keys(props);
+
+        // _.each(newKeys, function(columnName) {
+
+          // c = this.column(columnName);
+
+          // // check if we're trying to update a computed column. If so
+          // // fail.
+          // if (c.isComputed()) {
+            // throw "You're trying to update a computed column. Those get computed!";
+          // }
+
+          // // test if the value passes the type test
+          // var Type = Miso.types[c.type];
+          
+          // if (Type) {
+            // if (Type.test(props[c.name], c)) {
+
+              // // do we have a before filter on the column? If so, apply it
+              // if (!_.isUndefined(c.before)) {
+                // props[c.name] = c.before(props[c.name]);
+              // }
+
+              // // coerce it.
+              // props[c.name] = Type.coerce(props[c.name], c);
+            // } else {
+              // throw("incorrect value '" + props[c.name] + 
+                    // "' of type " + Miso.typeOf(props[c.name], c) +
+                    // " passed to column '" + c.name + "' with type " + c.type);  
+            // }
+          // }
+          // c.data[rowIndex] = props[c.name];
+        // }, this);
+        
+        // // do we have any computed columns? if so we need to update
+        // // the row.
+        // if (typeof this._computedColumns !== "undefined") {
+          // _.each(this._computedColumns, function(column) {
+
+            // // compute the complete row:
+            // var newrow = _.extend({}, row, props);
+            
+            // var oldValue = newrow[column.name];
+            // var newValue = column.compute(newrow, rowIndex);
+            // // if this is actually a new value, then add it to the delta.
+            // if (oldValue !== newValue) {
+              // props[column.name] = newValue;
+            // }
+          // });
+        // }
+
+        // deltas.push( { _id : row._id, old : row, changed : props } );
+      // }, this);
+
+      // // do we just have a single id? array it up.
+      // if (_.isString(filter)) {
+        // filter = [filter];
+      // }
+      // // do we have an array of ids instead of filter functions?
+      // if (_.isArray(filter)) {
+        // var row, rowIndex;
+        // _.each(filter, function(rowId) {
+          // row = this.rowById(rowId);
+          // rowIndex = this._rowPositionById[rowId];
+          
+          // updateRow(row, rowIndex);
+        // });
+
+      // } else {
+
+        // // make a filter function.
+        // filter = this._rowFilter(filter);
+
+        // this.each(function(row, rowIndex) {
+          // if (filter(row)) {
+            // updateRow(row, rowIndex);
+          // }
+        // }, this);
+      // }
+
+      // if (this.syncable && (!options || !options.silent)) {
+        // var ev = this._buildEvent( deltas );
+        // this.trigger('update', ev );
+        // this.trigger('change', ev );
+      // }
+      // return this;
     },
 
     /**

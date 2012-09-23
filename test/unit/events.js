@@ -100,7 +100,7 @@
       }
     });
 
-    ds.update( ds.column('_id').data[0], {one: 9} );
+    ds.update({_id : ds.column('_id').data[0], one: 9});
 
   });
 
