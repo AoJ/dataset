@@ -1,8 +1,6 @@
 (function(global) {
   
-  var Util  = global.Util;
   var Miso    = global.Miso || {};
-  var Dataset = Miso.Dataset;
 
   module("CountBy");
   var countData = {
@@ -239,7 +237,7 @@
       ok(_.isEqual(ma.column("B").data, _.movingAvg(this.column("B").data, 3)));
       ok(_.isEqual(ma.column("C").data, _.movingAvg(this.column("C").data, 3)));
 
-      this.update(this.column("_id").data[0], {
+      this.update({ _id : this.column("_id").data[0],
         A : 100, B : 100, C : 100
       });
 
@@ -267,28 +265,6 @@
           name : "anothercount",
           type : "number", 
           data : [10,20,30,40,50,60]
-        }
-      ]
-    };
-  }
-
-  function getGroupByData() {
-    return {
-      columns : [
-        { 
-          name : "state",
-          type : "string",
-          data : ["AZ", "MA"]
-        },
-        {
-          name : "count",
-          type : "number",
-          data : [6,15]
-        },
-        {
-          name : "anothercount",
-          type : "number", 
-          data : [60,150]
         }
       ]
     };
@@ -338,7 +314,8 @@
       var groupedData = ds.groupBy("state", ["count", "anothercount"]);
       var rowid = ds._columns[0].data[0];
       
-      ds.update(rowid, {
+      ds.update({
+        _id : rowid,
         state : "MN"
       });
 
@@ -361,7 +338,8 @@
       var groupedData = ds.groupBy("state", ["anothercount"]);
       var rowid = ds._columns[0].data[0];
       
-      ds.update(rowid, {
+      ds.update({
+        count : rowid,
         state : "MN"
       });
 
@@ -479,7 +457,7 @@
       ok(_.isEqual(groupedData._columns[4].data, [60,150]), "anothercounts correct" + groupedData._columns[3].data);
 
       groupedData = ds.groupBy("state", ["count", "anothercount"], {
-        preprocess : function(state) {
+        preprocess : function() {
           return "A";
         }
       });

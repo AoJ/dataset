@@ -1,8 +1,7 @@
 (function(global) {
 
-  var Util  = global.Util;
   var Miso    = global.Miso || {};
-  var Dataset = global.Miso.Dataset;
+  var Dataset = Miso.Dataset;
 
   module("Bugs");
 
@@ -257,9 +256,9 @@
 
         // test update
         ds.update(function(row) {
-          // update all rows
-          return true;
-        }, { a : "1" , b : 5 });
+          row.a = '1';
+          return row;
+        });
 
         equals(ds.rows(function(row) {
           return row.a === "1";
@@ -342,7 +341,7 @@
       ok(_.isEqual(gb.column("e").data, [1]));
       ok(_.isEqual(gb.column("x").data, [3]));
 
-      gb.bind("change", function() {
+      gb.subscribe("change", function() {
         equals(gb.length, 2);
         ok(_.isEqual(gb.column("q").data, [3,50]));
         ok(_.isEqual(gb.column("e").data, [1,12]));
@@ -373,4 +372,36 @@
       equals(ds.length, 3);
     });
   });
+
+  test("Non -1/0/1 comparators cause a mess", 1, function() {
+    //we use this to check we've managed to update twice
+    //without an error about updating the ID column
+    var count = 0;
+    var ds = new Dataset({
+      url : "/poller/updated.json",
+      interval : 100,
+      uniqueAgainst : "name",
+      sync: true
+    });
+
+    stop();
+    ds.fetch({ 
+      success : function() {  
+        ds.sort(function(a,b) {
+          return a.one - b.one;
+        });
+        count += 1;
+        if (count === 3) {
+          ok(true);
+          start();
+        }
+      }, 
+      error : function() { 
+        start();
+        ok(false);
+      }
+    });
+  });
+
+
 }(this));

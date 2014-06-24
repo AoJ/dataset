@@ -7,25 +7,29 @@ Version 0.0.1.2
 
 (function(global, _, moment) {
 
+  var Miso = global.Miso || (global.Miso = {});
   var Dataset = global.Miso.Dataset;
 
   // take on miso dataview's prototype
   Dataset.prototype = new Dataset.DataView();
 
-  // add dataset methods to dataview.
-  _.extend(Dataset.prototype, {
+  // Add dataset methods to dataview.
+  _.extend(Dataset.prototype,
+    /** @lends Miso.Dataset.prototype */
+    {
 
     /**
-    * @private
-    * Internal initialization method. Reponsible for data parsing.
-    * @param {object} options - Optional options  
-    */
+     * Internal initialization method. Reponsible for data parsing.
+     * @private
+     *
+     * @param {object} [options]
+     */
     _initialize: function(options) {
 
       // is this a syncable dataset? if so, pull
       // required methods and mark this as a syncable dataset.
       if (options.sync === true) {
-        _.extend(this, Dataset.Events);
+        _.extend(this, Miso.Events);
         this.syncable = true;
       }
 
@@ -117,30 +121,51 @@ Version 0.0.1.2
     },
 
     /**
-    * Responsible for actually fetching the data based on the initialized dataset.
-    * Note that this needs to be called for either local or remote data.
-    * There are three different ways to use this method:
-    * ds.fetch() - will just fetch the data based on the importer. Note that for async 
-    *              fetching this isn't blocking so don't put your next set of instructions
-    *              expecting the data to be there.
-    * ds.fetch({
-    *   success: function() { 
-    *     // do stuff
-    *     // this is the dataset.
-    *   },
-    *   error : function(e) {
-    *     // do stuff
-    *   }
-    * })        - Allows you to pass success and error callbacks that will be called once data
-    *             is property fetched.
-    *
-    * _.when(ds.fetch(), function() {
-    *   // do stuff
-    *   // note 'this' is NOT the dataset.
-    * })        - Allows you to use deferred behavior to potentially chain multiple datasets.
-    *
-    * @param {object} options Optional success/error callbacks.
-    **/
+     * Responsible for actually fetching the data based on the initialized
+     * dataset. Note that this needs to be called for either local or remote
+     * data.
+     *
+     * There are three different ways to use this method:
+     *
+     *     ds.fetch();
+     *
+     * will just fetch the data based on the importer. Note that for async
+     * fetching this isn't blocking so don't put your next set of instructions
+     * expecting the data to be there.
+     *
+     *     ds.fetch({
+     *       success: function() {
+     *         // do stuff
+     *         // this is the dataset.
+     *       },
+     *       error : function(e) {
+     *         // do stuff
+     *       }
+     *     });
+     *
+     * Allows you to pass success and error callbacks that will be called once
+     * data is property fetched.
+     *
+     *     _.when(ds.fetch(), function() {
+     *       // do stuff
+     *       // note 'this' is NOT the dataset.
+     *     });
+     *
+     * Allows you to use deferred behavior to potentially chain multiple
+     * datasets.
+     *
+     * @param {Object} [options]
+     * @param {Function} options.success - Success callback to be called when
+     *                                     data is fetched. Context is the
+     *                                     dataset.
+     * @param {Function} options.failure - Error callback to be called when
+     *                                     data fetching fails. Context is the
+     *                                     dataset.
+     *
+     * @externalExample {runnable} dataset/fetch
+     *
+     * @returns {Deferred}
+     */
     fetch : function(options) {
       options = options || {};
       
@@ -200,7 +225,6 @@ Version 0.0.1.2
       //Update existing values, used the pass column to match 
       //incoming data to existing rows.
       againstColumn : function(data) {
-        
         var rows = [],
             colNames = _.keys(data),   
             row,
@@ -222,8 +246,8 @@ Version 0.0.1.2
             toAdd.push( row );
           } else {
             toUpdate.push( row );
-            var oldRow = this.rowById(this.column(this.idAttribute).data[rowIndex])[this.idAttribute];
-            this.update(oldRow, row);
+            row[this.idAttribute] = this.rowById(this.column(this.idAttribute).data[rowIndex])[this.idAttribute];
+            this.update(row);
           }
         }, this);
         if (toAdd.length > 0) {
@@ -312,13 +336,20 @@ Version 0.0.1.2
     },
 
     /**
-    * Allows adding of a computed column. A computed column is
-    * a column that is somehow based on the other existing columns.
-    * Parameters:
-    *   name : name of new column
-    *   type : The type of the column based on existing types.
-    *   func : The way that the column is derived. It takes a row as a parameter.
-    */
+     * Creates a new column that is computationally derived from the rest of
+     * the row. See [the Computed columns
+     * tutorial](http://misoproject.com/dataset/tutorials/computed.html) for
+     * more information.
+     *
+     * @param {String} name - name of new column
+     * @param {String} type - The type of the column based on existing
+     * @param {Function} func - The way that the column is derived. It takes a
+     *                          row as a parameter.
+     *
+     * @externalExample {runnable} dataset/add-column
+     *
+     * @returns {Miso.Dataset.Column}
+     */
     addComputedColumn : function(name, type, func) {
       // check if we already ahve a column by this name.
       if ( !_.isUndefined(this.column(name)) ) { 
@@ -351,13 +382,23 @@ Version 0.0.1.2
       }
     },
 
-    /** 
-    * Adds a single column to the dataset
-    * Parameters:
-    *   column : a set of properties describing a column (name, type, data etc.)
-    * Returns
-    *   Miso.Column object.
-    */
+    /**
+     * Creates a new column and adds it to the dataset.
+     *
+     * @param {Object} column - a set of properties describing a {@link
+     *                          Miso.Dataset.Column}
+     * @param {String} column.name - Column name
+     * @param {String} column.type - String name of column type
+     * @param {String} [column.format] - Only used for columns of the type
+     *                                  `time`. The moment.js format describing
+     *                                  the input dates.
+     * @param {String} [column._id] - Sets a custom column _id. We assign one
+     *                                by default.
+     * @param {Array} [column.data] - Column data. By default, set to an empty
+     *                                array.
+     *
+     * @returns {Miso.Dataset.Column}
+     */
     addColumn : function(column) {
       //don't create a column that already exists
       if ( !_.isUndefined(this.column(column.name)) ) { 
@@ -373,11 +414,12 @@ Version 0.0.1.2
     },
 
     /**
-    * Adds an id column to the column definition. If a count
-    * is provided, also generates unique ids.
-    * Parameters:
-    *   count - the number of ids to generate.
-    */
+     * Adds an id column to the column definition. If a count is provided, also
+     * generates unique ids.
+     * @private
+     *
+     * @param {Number} count - the number of ids to generate.
+     */
     _addIdColumn : function( count ) {
       // if we have any data, generate actual ids.
 
@@ -422,13 +464,18 @@ Version 0.0.1.2
     },
 
     /**
-    * Add a row to the dataset. Triggers add and change.
-    * Parameters:
-    *   row - an object representing a row in the form of:
-    *         {columnName: value}
-    *   options - options
-    *     silent: boolean, do not trigger an add (and thus view updates) event
-    */    
+     * Add a row to the dataset. Triggers `add` and `change` events on a
+     * syncable dataset.
+     *
+     * @param {Object} rows - an object representing a row
+     * @param {Object} [options]
+     * @param {Boolean} options.silent - do not trigger an add (and thus view
+     *                                   updates) event
+     *
+     * @externalExample {runnable} dataset/add
+     *
+     * @returns {Miso.Dataset}
+     */
     add : function(rows, options) {
       
       options = options || {};
@@ -454,21 +501,30 @@ Version 0.0.1.2
       }, this);
       
       if (this.syncable && !options.silent) {
-        var e = this._buildEvent(deltas, this);
-        this.trigger('add', e );
-        this.trigger('change', e );
+        var e = Dataset.Events._buildEvent(deltas, this);
+        this.publish('add', e );
+        this.publish('change', e );
       }
 
       return this;
     },
 
     /**
-    * Remove all rows that match the filter. Fires remove and change.
-    * Parameters:
-    *   filter - row id OR function applied to each row to see if it should be removed.
-    *   options - options. Optional.
-    *     silent: boolean, do not trigger an add (and thus view updates) event
-    */    
+     * Remove all rows that match the filter. Fires `remove` and `change`
+     * events on a syncable dataset.
+     *
+     * @param {Number|Function} filter - can be one of two things: A row id, or
+     *                                   a filter function that takes a row and
+     *                                   returns true if that row should be
+     *                                   removed or false otherwise.
+     * @param {Object} [options]
+     * @param {Boolean} options.silent - do not trigger an add (and thus view
+     *                                   updates) event
+     *
+     * @externalExample {runnable} dataset/remove
+     *
+     * @return {Miso.Dataset}
+     */
     remove : function(filter, options) {
       filter = this._rowFilter(filter);
       var deltas = [], rowsToRemove = [];
@@ -488,142 +544,144 @@ Version 0.0.1.2
       }, this);
       
       if (this.syncable && (!options || !options.silent)) {
-        var ev = this._buildEvent( deltas, this );
-        this.trigger('remove', ev );
-        this.trigger('change', ev );
+        var ev = Dataset.Events._buildEvent( deltas, this );
+        this.publish('remove', ev );
+        this.publish('change', ev );
       }
     },
 
-    /**
-    * Update all rows that match the filter. Fires update and change.
-    * Parameters:
-    *   filter - row id OR filter rows to be updated
-    *   newProperties - values to be updated.
-    *   options - options. Optional
-    *     silent - set to true to prevent event triggering..
-    */    
-    update : function(filter, newProperties, options) {
+    _arrayUpdate : function(rows) {
+      var deltas = [];
+      _.each(rows, function(newRow) {
+        var delta = { old : {}, changed : {} };
+        delta[this.idAttribute] = newRow[this.idAttribute];
 
-      var newKeys, deltas = [];
+        var pos = this._rowPositionById[newRow[this.idAttribute]];
+        _.each(newRow, function(value, prop) {
+          var column = this._columns[this._columnPositionByName[prop]];
+          var type = Dataset.types[column.type];
 
-      var updateRow = _.bind(function(row, rowIndex) {
-        var c, props;
-
-        if (_.isFunction(newProperties)) {
-          props = newProperties.apply(this, [row]);
-        } else {
-          props = newProperties;
-        }
-
-        newKeys = _.keys(props);
-
-        _.each(newKeys, function(columnName) {
-
-          // check that we aren't trying to update the id column
-          if (columnName === this.idAttribute) {
+          if ((column.name === this.idAttribute) && (column.data[pos] !== value)) {
             throw "You can't update the id column";
           }
-          
-          c = this.column(columnName);
 
-          // check if we're trying to update a computed column. If so
-          // fail.
-          if (c.isComputed()) {
-            throw "You're trying to update a computed column. Those get computed!";
+          if (typeof column === "undefined") { 
+            throw "column " + prop + " not found!"; 
           }
 
-          // test if the value passes the type test
-          var Type = Dataset.types[c.type];
-          
-          if (Type) {
-            if (Type.test(props[c.name], c)) {
+          //Ensure value passes the type test
+          if (!type.test(value, column)) {
+            throw "Value is incorrect type";
+          }
 
-              // do we have a before filter on the column? If so, apply it
-              if (!_.isUndefined(c.before)) {
-                props[c.name] = c.before(props[c.name]);
+          //skip if computed column
+          if (this._computedColumns[column.name]) {
+            return;
+          }
+
+          value = type.coerce(value, column);
+
+          //Run any before filters on the column
+          if (!_.isUndefined(column.before)) {
+            value = column.before(value);
+          }
+ 
+          if (column.data[pos] !== value) {
+            delta.old[prop] = column.data[pos];
+            column.data[pos] = value;
+            delta.changed[prop] = value;
+          }
+
+
+        }, this);
+
+          // Update any computed columns
+          if (typeof this._computedColumns !== "undefined") {
+            _.each(this._computedColumns, function(column) {
+              var temprow = _.extend({}, this._row(pos)),
+                  oldValue = temprow[column.name],
+                  newValue = column.compute(temprow, pos);
+              if (oldValue !== newValue) {
+                delta.old[column.name] = oldValue;
+                column.data[pos] = newValue;
+                delta.changed[column.name] = newValue;
               }
-
-              // coerce it.
-              props[c.name] = Type.coerce(props[c.name], c);
-            } else {
-              throw("incorrect value '" + props[c.name] + 
-                    "' of type " + Dataset.typeOf(props[c.name], c) +
-                    " passed to column '" + c.name + "' with type " + c.type);  
-            }
+            }, this);
           }
-          c.data[rowIndex] = props[c.name];
-        }, this);
-        
-        // do we have any computed columns? if so we need to update
-        // the row.
-        if (typeof this._computedColumns !== "undefined") {
-          _.each(this._computedColumns, function(column) {
-
-            // compute the complete row:
-            var newrow = _.extend({}, row, props);
-            
-            var oldValue = newrow[column.name];
-            var newValue = column.compute(newrow, rowIndex);
-            // if this is actually a new value, then add it to the delta.
-            if (oldValue !== newValue) {
-              props[column.name] = newValue;
-            }
-          });
+        if ( _.keys(delta.changed).length > 0 ) {
+          deltas.push(delta);
         }
-
-        var delta = { old : row, changed : props };
-        delta[this.idAttribute] = row[this.idAttribute];
-        deltas.push(delta);
       }, this);
+      return deltas;
+    },
 
-      // do we just have a single id? array it up.
-      if (_.isString(filter)) {
-        filter = [filter];
+    _functionUpdate : function(func) {
+      var rows = [];
+      for(var i = 0; i < this.length; i++) {
+        var newRow = func(this.rowByPosition(i));
+        if (newRow !== false) {
+          rows.push( newRow );
+        }
       }
-      // do we have an array of ids instead of filter functions?
-      if (_.isArray(filter)) {
-        var row, rowIndex;
-        _.each(filter, function(rowId) {
-          row = this.rowById(rowId);
-          rowIndex = this._rowPositionById[rowId];
-          
-          updateRow(row, rowIndex);
-        });
+      return this._arrayUpdate(rows);
+    },
 
+    /**
+     * Updates one or more rows in a dataset. You can pass either a row object
+     * that contains an the identifying id property and altered property, an
+     * array of objects of the same form or a function that will be first
+     * applied to all rows. The function should take a `row` object for each
+     * row in the dataset. If a row shouldn't be modified, the function can
+     * return false for that row. This will fire update and change events on a
+     * syncable dataset.
+     *
+     * @param {Function|String} rowsOrFunction - Can be one of two things: A
+     *                                           row id, or a filter function
+     *                                           that takes a row and returns
+     *                                           true if that row should be
+     *                                           removed or false otherwise.
+     * @param {Object} [options]
+     * @param {Boolean} options.silent - Set to true to disable event firing
+     *
+     * @externalExample {runnable} dataset/update
+     *
+     * @returns {Miso.Dataset}
+     */
+    update : function( rowsOrFunction, options ) {
+      var deltas;
+
+      if ( _.isFunction(rowsOrFunction) ) {
+        deltas = this._functionUpdate(rowsOrFunction);
       } else {
-
-        // make a filter function.
-        filter = this._rowFilter(filter);
-
-        this.each(function(row, rowIndex) {
-          if (filter(row)) {
-            updateRow(row, rowIndex);
-          }
-        }, this);
+        var rows = _.isArray(rowsOrFunction) ? rowsOrFunction : [rowsOrFunction];
+        deltas = this._arrayUpdate(rows);
       }
 
+      //computer column updates
+      //update triggers
       if (this.syncable && (!options || !options.silent)) {
-        var ev = this._buildEvent( deltas, this );
-        this.trigger('update', ev );
-        this.trigger('change', ev );
+        var ev = Dataset.Events._buildEvent( deltas, this );
+        this.publish('update', ev );
+        this.publish('change', ev );
       }
       return this;
     },
 
     /**
-    * Clears all the rows
-    * Fires a "reset" event.
-    * Parameters:
-    *   options (object)
-    *     silent : true | false.
-    */
+     * Clears all the rows. Fires a `reset` event.
+     *
+     * @param {Object} [options]
+     * @param {Boolean} options.silent
+     *
+     * @externalExample {runnable} dataset/reset
+     */
     reset : function(options) {
       _.each(this._columns, function(col) {
         col.data = [];
       });
       this.length = 0;
       if (this.syncable && (!options || !options.silent)) {
-        this.trigger("reset");
+        this.publish("reset");
       }
     }
 

@@ -89,7 +89,8 @@
     _.when(ds.fetch()).then(function() {
       ok(_.isEqual(ds.sum("vals"), 550));
       ok(_.isEqual(ds.column("vals").data, [10,20,30,40,50,60,70,80,90,100]), ds.column("vals").data);
-      ds.update(ds._columns[0].data[0], {
+      ds.update({
+        _id : ds._columns[0].data[0],
         vals : 4
       });
       equals(ds.column('vals').data[0], 40);
@@ -210,7 +211,7 @@
   test("Function Row Filter View creation with computed product", function() {
     var ds = Util.baseSample();
     var view = ds.where({
-      rows : function(row) {
+      rows : function() {
         return true;
       }
     });
@@ -223,7 +224,7 @@
   test("Function Row Filter View creation with computed product with custom idAttribute", function() {
     var ds = Util.baseSampleCustomID();
     var view = ds.where({
-      rows : function(row) {
+      rows : function() {
         return true;
       }
     });
@@ -358,7 +359,7 @@ module("Views :: Rows Selection");
     };
     var count = 0;
 
-    ds.reverseEach(function(row, index) {
+    ds.reverseEach(function(row) {
       if (count === 0) {
         ok(_.isEqual(row, expectedRow), "Row by position is equal");
       }
@@ -431,9 +432,9 @@ module("Views :: Syncing");
         
         var event = Dataset.Events._buildEvent(delta);
 
-        // trigger view sync with delta
+        // publish view sync with delta
         // view.sync(delta);
-        ds.trigger("change", event);
+        ds.publish("change", event);
 
         // make sure view updated
         ok(view._columns[colPos].data[0] === 100, "view was updated to " + view._columns[colPos].data[0]);
@@ -467,13 +468,11 @@ module("Views :: Syncing");
         };
         delta.old[col] = oldVal;
         delta.changed[col] = 100;
-        
-        var event = Dataset.Events._buildEvent(delta);
 
-        // trigger view sync with delta
+        // publish view sync with delta
         // view.sync(delta);
-        if (_.isUndefined(ds.trigger)) {
-          ok(true, "can't even trigger change, no trigger api.");
+        if (_.isUndefined(ds.publish)) {
+          ok(true, "can't even trigger change, no publish api.");
         }
 
         // make sure view updated
@@ -489,7 +488,7 @@ module("Views :: Syncing");
         firstRowId = ds._rowIdByPosition[0],
         view3 = ds.where(firstRowId);
 
-    ds.update(firstRowId, { one: 100, two: 200 });
+    ds.update({ _id : firstRowId, one: 100, two: 200 });
     equals(view1.column('one').data[0], 100);
     equals(view2.column('two').data[0], 200);
     equals(view3._columns[1].data[0], 100);
@@ -538,7 +537,7 @@ module("Views :: Syncing");
     var event = Dataset.Events._buildEvent(delta);
 
     // trigger dataset change
-    ds.trigger("change", event);
+    ds.publish("change", event);
 
     // verify both views have updated
     ok(view._columns[1].data[0] === 100, "first view updated");
@@ -548,8 +547,6 @@ module("Views :: Syncing");
 
   test("Basic row removal propagation", function() {
     var ds = Util.baseSyncingSample();
-    var colname = ds._columns[1].name;
-    var rowPos = 0;
 
     // make a view for first two rows
     var view = ds.where({
@@ -568,7 +565,7 @@ module("Views :: Syncing");
 
     // delete actual row
     ds._remove( ds._rowIdByPosition[0] );
-    ds.trigger("change", event);
+    ds.publish("change", event);
 
     // verify view row was deleted as well
     ok(view.length === 1, "view is one element shorter");
@@ -616,7 +613,7 @@ module("Views :: Syncing");
     // for now, we aren't adding the actual data to the original dataset
     // just simulating that addition. Eventually when we ammend the api
     // with .add support, this can be refactored. better yet, added to.
-    ds.trigger("change", event);
+    ds.publish("change", event);
 
     ok(view.length === 4, "row was added");
     ok(_.isEqual(view.rowByPosition(3), newRow), "rows are equal");
@@ -657,7 +654,7 @@ module("Views :: Syncing");
     // for now, we aren't adding the actual data to the original dataset
     // just simulating that addition. Eventually when we ammend the api
     // with .add support, this can be refactored. better yet, added to.
-    ds.trigger("change", event);
+    ds.publish("change", event);
 
     ok(view.length === 3, "row was NOT added");
 
